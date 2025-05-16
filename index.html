@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Monitor Harga DOGE</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+    .header-img {
+      width: 300px;
+      max-width: 90vw;
+      margin-bottom: 10px;
+      border-radius: 15px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.2);
+    }
+    .chart-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+    }
+    .chart-box {
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      width: 45%;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    canvas {
+      display: block;
+      max-width: 100%;
+    }
+    #changeInfo, #usdtChangeInfo {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Gambar sketsa sebagai header -->
+  <img src="sketsa_cucu_ver02.png" alt="Sketsa Anak-anak" class="header-img" />
+  <h2>Monitor Harga DOGE Oleh: GiaNnia Rawayan</h2>
+
+  <p id="changeInfo">Memuat data perubahan harga DOGE/IDR (Indodax) selama 24 jam...</p>
+  <p id="usdtChangeInfo">Memuat data perubahan harga USDT/IDR (Indodax) selama 24 jam...</p>
+
+  <div class="chart-container">
+    <div class="chart-box">
+      <h3>DOGE/USDT (Kalkulasi dari Indodax)</h3>
+      <canvas id="dogeUsdtCalcChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>DOGE/USDT (Binance)</h3>
+      <canvas id="dogeUsdtBinanceChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>DOGE/IDR (Indodax)</h3>
+      <canvas id="dogeIdrIndodaxChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>USDT/IDR (Indodax)</h3>
+      <canvas id="usdtIdrChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const ctxCalc = document.getElementById('dogeUsdtCalcChart').getContext('2d');
+    const ctxBinance = document.getElementById('dogeUsdtBinanceChart').getContext('2d');
+    const ctxIdrIndodax = document.getElementById('dogeIdrIndodaxChart').getContext('2d');
+    const ctxUsdtIdr = document.getElementById('usdtIdrChart').getContext('2d');
+
+    const dogeUsdtCalcChart = new Chart(ctxCalc, {
+      type: 'line',
+      data: { datasets: [{ label: 'DOGE/USDT (Kalkulasi)', data: [], borderColor: 'blue', tension: 0.3 }] },
+      options: chartOptions()
+    });
+
+    const dogeUsdtBinanceChart = new Chart(ctxBinance, {
+      type: 'line',
+      data: { datasets: [{ label: 'DOGE/USDT (Binance)', data: [], borderColor: 'orange', tension: 0.3 }] },
+      options: chartOptions()
+    });
+
+    const dogeIdrIndodaxChart = new Chart(ctxIdrIndodax, {
+      type: 'line',
+      data: { datasets: [{ label: 'DOGE/IDR (Indodax)', data: [], borderColor: 'green', tension: 0.3 }] },
+      options: chartOptions()
+    });
+
+    const usdtIdrChart = new Chart(ctxUsdtIdr, {
+      type: 'line',
+      data: { datasets: [{ label: 'USDT/IDR (Indodax)', data: [], borderColor: 'purple', tension: 0.3 }] },
+      options: chartOptions()
+    });
+
+    function chartOptions() {
+      return {
+        scales: {
+          x: {
+            type: 'time',
+            time: { tooltipFormat: 'HH:mm:ss', displayFormats: { second: 'HH:mm:ss' } }
+          },
+          y: { beginAtZero: false }
+        }
+      };
+    }
+
+    function saveInitialPrice(key, price) {
+      localStorage.setItem(`${key}_price`, price);
+      localStorage.setItem(`${key}_time`, Date.now());
+    }
+
+    function getInitialPrice(key) {
+      const price = localStorage.getItem(`${key}_price`);
+      const time = localStorage.getItem(`${key}_time`);
+      if (price && time && ((Date.now() - time) < 86400000)) {
+        return parseFloat(price);
+      }
+      return null;
+    }
+
+    let hargaAwalDOGEIDR = null;
+    let hargaAwalUSDTIDR = null;
+
+    async function fetchInitialPrices() {
+      hargaAwalDOGEIDR = getInitialPrice('doge_idr');
+      hargaAwalUSDTIDR = getInitialPrice('usdt_idr');
+
+      if (!hargaAwalDOGEIDR || !hargaAwalUSDTIDR) {
+        try {
+          const [dogeRes, usdtRes] = await Promise.all([
+            fetch('https://indodax.com/api/doge_idr/ticker'),
+            fetch('https://indodax.com/api/usdt_idr/ticker')
+          ]);
+          const dogePrice = parseFloat((await dogeRes.json()).ticker.last);
+          const usdtPrice = parseFloat((await usdtRes.json()).ticker.last);
+
+          if (!hargaAwalDOGEIDR) {
+            hargaAwalDOGEIDR = dogePrice;
+            saveInitialPrice('doge_idr', dogePrice);
+          }
+          if (!hargaAwalUSDTIDR) {
+            hargaAwalUSDTIDR = usdtPrice;
+            saveInitialPrice('usdt_idr', usdtPrice);
+          }
+        } catch (e) {
+          console.error("Gagal mengambil harga awal:", e);
+        }
+      }
+    }
+
+    async function updateDataDanChart() {
+      const now = new Date();
+      try {
+        const [dogeRes, usdtRes, binanceRes] = await Promise.all([
+          fetch('https://indodax.com/api/doge_idr/ticker'),
+          fetch('https://indodax.com/api/usdt_idr/ticker'),
+          fetch('https://api.binance.com/api/v3/ticker/price?symbol=DOGEUSDT')
+        ]);
+
+        const dogeIdr = parseFloat((await dogeRes.json()).ticker.last);
+        const usdtIdr = parseFloat((await usdtRes.json()).ticker.last);
+        const dogeUsdtBinance = parseFloat((await binanceRes.json()).price);
+        const dogeUsdtCalc = dogeIdr / usdtIdr;
+
+        dogeUsdtCalcChart.data.datasets[0].data.push({ x: now, y: dogeUsdtCalc });
+        dogeUsdtBinanceChart.data.datasets[0].data.push({ x: now, y: dogeUsdtBinance });
+        dogeIdrIndodaxChart.data.datasets[0].data.push({ x: now, y: dogeIdr });
+        usdtIdrChart.data.datasets[0].data.push({ x: now, y: usdtIdr });
+
+        [dogeUsdtCalcChart, dogeUsdtBinanceChart, dogeIdrIndodaxChart, usdtIdrChart].forEach(chart => {
+          while (chart.data.datasets[0].data.length > 60) chart.data.datasets[0].data.shift();
+          chart.update();
+        });
+
+        updatePerubahanHarga('changeInfo', hargaAwalDOGEIDR, dogeIdr, 'DOGE/IDR');
+        updatePerubahanHarga('usdtChangeInfo', hargaAwalUSDTIDR, usdtIdr, 'USDT/IDR');
+      } catch (err) {
+        console.error("Gagal update:", err);
+      }
+    }
+
+    function updatePerubahanHarga(id, hargaAwal, hargaSekarang, label) {
+      const el = document.getElementById(id);
+      if (hargaAwal !== null) {
+        const selisih = hargaSekarang - hargaAwal;
+        const persen = ((selisih / hargaAwal) * 100).toFixed(2);
+        const warna = selisih >= 0 ? 'green' : 'red';
+        const arah = selisih >= 0 ? 'naik' : 'turun';
+        el.innerHTML = `Perubahan harga ${label} selama 24 jam: <span style="color:${warna}">${arah} ${Math.abs(selisih).toLocaleString('id-ID')} IDR (${Math.abs(persen)}%)</span>`;
+      } else {
+        el.textContent = `Memuat perubahan harga ${label}...`;
+      }
+    }
+
+    fetchInitialPrices().then(() => {
+      updateDataDanChart();
+      setInterval(updateDataDanChart, 5000);
+    });
+
+    // Update harga awal DOGE dan USDT setiap 24 jam
+    setInterval(() => {
+      fetch('https://indodax.com/api/doge_idr/ticker')
+        .then(res => res.json())
+        .then(data => {
+          const harga = parseFloat(data.ticker.last);
+          saveInitialPrice('doge_idr', harga);
+          hargaAwalDOGEIDR = harga;
+        });
+
+      fetch('https://indodax.com/api/usdt_idr/ticker')
+        .then(res => res.json())
+        .then(data => {
+          const harga = parseFloat(data.ticker.last);
+          saveInitialPrice('usdt_idr', harga);
+          hargaAwalUSDTIDR = harga;
+        });
+    }, 86400000);
+
+  </script>
+</body>
+</html>
